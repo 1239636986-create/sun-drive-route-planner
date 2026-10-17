@@ -1,0 +1,43 @@
+# 环境变量与密钥 —— 绝不提交
+.env
+.env.*
+!.env.example
+
+# 依赖
+node_modules/
+.pnpm-store/
+.npm-cache/
+
+# 构建产物
+dist/
+dist-sun-drive/
+build/
+*.tsbuildinfo
+
+# 日志与缓存
+*.log
+npm-debug.log*
+.cache/
+.tmp/
+
+# 本地验证产物（截图 / 无头浏览器临时配置）
+.chrome-profile/
+.screenshots/
+
+# 临时调试产物与打包文件
+.repro_check/
+repro/
+*.zip
+
+# 编辑器 / 系统
+.DS_Store
+.idea/
+.vscode/
+*.swp
+
+# 测试与覆盖率
+coverage/
+
+# 本次验证产生的临时抓取数据
+/tmp-amap/
+*.amap-raw.json

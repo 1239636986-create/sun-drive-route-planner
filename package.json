@@ -1,0 +1,32 @@
+{
+  "name": "sunglare-route-planner",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "阳光驾驶路线 —— 出发前预演整条路线的阳光迎面照射风险",
+  "scripts": {
+    "dev": "vite",
+    "dev:sun-drive": "vite --config vite.sun-drive.config.ts",
+    "build": "tsc --noEmit && vite build",
+    "build:sun-drive": "tsc --noEmit && vite build --config vite.sun-drive.config.ts",
+    "preview": "vite preview",
+    "preview:sun-drive": "vite preview --config vite.sun-drive.config.ts",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "dependencies": {
+    "maplibre-gl": "^5.1.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.2",
+    "@types/react": "^18.3.12",
+    "@types/react-dom": "^18.3.1",
+    "@vitejs/plugin-react": "^4.3.4",
+    "typescript": "^5.7.2",
+    "vite": "^6.0.5",
+    "vitest": "^2.1.8"
+  }
+}
