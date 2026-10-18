@@ -184,14 +184,14 @@ export function MapView({
         layout: { 'line-cap': 'round', 'line-join': 'round' },
         paint: {
           'line-color': ['get', 'color'],
-          // 窄屏与高缩放下都保持可见
+          // 加粗突出：远看也能立刻辨认分级路段
           'line-width': [
             'interpolate',
             ['linear'],
             ['zoom'],
-            6, 2.2,
-            10, 4,
-            14, 7,
+            6, 5,
+            10, 9,
+            14, 14,
           ],
           'line-opacity': 0.95,
         },
@@ -213,9 +213,9 @@ export function MapView({
             'interpolate',
             ['linear'],
             ['zoom'],
-            6, 5,
-            10, 9,
-            14, 14,
+            6, 9,
+            10, 15,
+            14, 22,
           ],
           'line-opacity': 0.85,
         },

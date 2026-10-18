@@ -218,7 +218,7 @@ describe('配色与文案 —— 无障碍要求', () => {
     }
   });
 
-  it('色相沿风险递增从蓝到红 —— 符合通用直觉', () => {
+  it('色相沿风险递增从绿到红 —— 符合通用直觉', () => {
     const hue = (hex: string) => {
       const r = parseInt(hex.slice(1, 3), 16) / 255;
       const g = parseInt(hex.slice(3, 5), 16) / 255;
@@ -234,10 +234,12 @@ describe('配色与文案 —— 无障碍要求', () => {
       return ((h * 60) % 360 + 360) % 360;
     };
 
-    // 低=蓝(约210°)，高=红(约5°)，极高=深红(约7°)
-    expect(hue(RISK_FILL_COLORS['低'])).toBeGreaterThan(190);
-    expect(hue(RISK_FILL_COLORS['低'])).toBeLessThan(240);
-    expect(hue(RISK_FILL_COLORS['高'])).toBeLessThan(20);
+    // 低=绿(约120°–150°)，中=黄(约40°–60°)，高/极高=红(约0°–30°)
+    expect(hue(RISK_FILL_COLORS['低'])).toBeGreaterThan(100);
+    expect(hue(RISK_FILL_COLORS['低'])).toBeLessThan(160);
+    expect(hue(RISK_FILL_COLORS['中'])).toBeGreaterThan(35);
+    expect(hue(RISK_FILL_COLORS['中'])).toBeLessThan(70);
+    expect(hue(RISK_FILL_COLORS['高'])).toBeLessThan(30);
     expect(hue(RISK_FILL_COLORS['极高'])).toBeLessThan(20);
   });
 
