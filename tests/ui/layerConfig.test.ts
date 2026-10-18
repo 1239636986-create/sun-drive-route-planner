@@ -153,13 +153,14 @@ describe('buildRouteGeoJSON —— 分段着色数据', () => {
     makeSeg(3, 85, 116.403, 39.9, 116.404, 39.9),
   ];
 
-  it('每个分段生成一个 LineString feature', () => {
+  it('不同风险色各成一段；同色相邻会合并', () => {
     const gj = buildRouteGeoJSON(segments);
     expect(gj.type).toBe('FeatureCollection');
+    // 四段风险等级各不相同 → 仍为 4 个 feature
     expect(gj.features).toHaveLength(4);
     for (const f of gj.features) {
       expect(f.geometry.type).toBe('LineString');
-      expect(f.geometry.coordinates).toHaveLength(2);
+      expect(f.geometry.coordinates.length).toBeGreaterThanOrEqual(2);
     }
   });
 
@@ -191,15 +192,31 @@ describe('buildRouteGeoJSON —— 分段着色数据', () => {
     expect(gj.features).toEqual([]);
   });
 
-  it('大量分段（模拟真实 1484 段）不产生重复 index', () => {
+  it('同色长途分段合并，避免数千 feature 拖垮浏览器绘制', () => {
     const many: SegmentRisk[] = [];
     for (let i = 0; i < 1484; i++) {
-      many.push(makeSeg(i, i % 100, 116 + i * 0.0001, 39.9, 116 + (i + 1) * 0.0001, 39.9));
+      // 全部低风险（分数 10）且首尾相接 → 应合并为 1 条
+      many.push(makeSeg(i, 10, 116 + i * 0.0001, 39.9, 116 + (i + 1) * 0.0001, 39.9));
     }
     const gj = buildRouteGeoJSON(many);
-    expect(gj.features).toHaveLength(1484);
-    const indices = new Set(gj.features.map((f) => f.properties.index));
-    expect(indices.size).toBe(1484);
+    expect(gj.features).toHaveLength(1);
+    expect(gj.features[0]!.geometry.coordinates).toHaveLength(1485);
+    expect(gj.features[0]!.properties.level).toBe('低');
+  });
+
+  it('风险色切换时断开合并', () => {
+    const segs: SegmentRisk[] = [
+      makeSeg(0, 10, 116.0, 39.9, 116.1, 39.9),
+      makeSeg(1, 10, 116.1, 39.9, 116.2, 39.9),
+      makeSeg(2, 70, 116.2, 39.9, 116.3, 39.9),
+      makeSeg(3, 70, 116.3, 39.9, 116.4, 39.9),
+    ];
+    const gj = buildRouteGeoJSON(segs);
+    expect(gj.features).toHaveLength(2);
+    expect(gj.features[0]!.properties.level).toBe('低');
+    expect(gj.features[1]!.properties.level).toBe('高');
+    expect(gj.features[0]!.geometry.coordinates).toHaveLength(3);
+    expect(gj.features[1]!.geometry.coordinates).toHaveLength(3);
   });
 });
 

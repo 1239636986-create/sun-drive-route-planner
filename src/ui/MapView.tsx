@@ -108,31 +108,60 @@ interface RouteFeature {
 /**
  * 把分段构建成 GeoJSON FeatureCollection。
  *
+ * 相邻且同风险色的段合并成更长的 LineString，避免长途路线
+ * （实测青岛→日照→天津约 6700 段）产生数千个独立 feature，
+ * 导致部分浏览器（尤其 Safari）MapLibre 线图层静默不绘制。
+ *
  * @param crs 目标瓦片源的坐标系。GCJ-02 时原样输出（零转换）。
  */
 export function buildRouteGeoJSON(
   segments: readonly SegmentRisk[],
   crs: 'GCJ-02' | 'WGS-84' = 'GCJ-02',
 ) {
-  const features: RouteFeature[] = segments.map((s) => {
+  const features: RouteFeature[] = [];
+
+  for (const s of segments) {
     const a = adaptCoord(s.a, crs);
     const b = adaptCoord(s.b, crs);
-    return {
+    if (
+      !Number.isFinite(a.lon) ||
+      !Number.isFinite(a.lat) ||
+      !Number.isFinite(b.lon) ||
+      !Number.isFinite(b.lat)
+    ) {
+      continue;
+    }
+
+    const level = riskLevel(s.rP80);
+    const color = RISK_FILL_COLORS[level];
+    const last = features[features.length - 1];
+
+    if (last && last.properties.color === color) {
+      const coords = last.geometry.coordinates;
+      const tip = coords[coords.length - 1]!;
+      // 与上一段首尾相接则续写；否则另起一段（防御性）
+      if (Math.abs(tip[0] - a.lon) < 1e-9 && Math.abs(tip[1] - a.lat) < 1e-9) {
+        coords.push([b.lon, b.lat]);
+        continue;
+      }
+    }
+
+    features.push({
       type: 'Feature' as const,
       properties: {
         index: s.index,
-        color: RISK_FILL_COLORS[riskLevel(s.rP80)],
-        level: riskLevel(s.rP80),
+        color,
+        level,
       },
       geometry: {
         type: 'LineString' as const,
         coordinates: [
           [a.lon, a.lat],
           [b.lon, b.lat],
-        ] as [number, number][],
+        ],
       },
-    };
-  });
+    });
+  }
 
   return { type: 'FeatureCollection' as const, features };
 }
@@ -152,6 +181,10 @@ export function MapView({
 }: MapViewProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<maplibregl.Map | null>(null);
+  /** 最新分段 —— installLayers 后立刻回填，避免换线后空窗丢数据 */
+  const segmentsRef = useRef(segments);
+  segmentsRef.current = segments;
+  const tileCrsRef = useRef<'GCJ-02' | 'WGS-84'>('GCJ-02');
   const [loaded, setLoaded] = useState(false);
   /** 地图本身无法初始化 —— 此时覆盖全屏，因为确实没法用 */
   const [fatalError, setFatalError] = useState<string | null>(null);
@@ -160,6 +193,19 @@ export function MapView({
 
   /** 当前瓦片源的坐标系 —— 决定路线是否需要转换 */
   const tileCrs = (TILE_SOURCES[tileSourceId] ?? TILE_SOURCES[DEFAULT_TILE_SOURCE]!).crs;
+  tileCrsRef.current = tileCrs;
+
+  const applyRouteData = (map: maplibregl.Map, segs: readonly SegmentRisk[]) => {
+    const src = map.getSource(ROUTE_SOURCE) as maplibregl.GeoJSONSource | undefined;
+    if (!src) return;
+    const geojson = buildRouteGeoJSON(segs, tileCrsRef.current);
+    src.setData(geojson as never);
+    if (geojson.features.length === 0 && segs.length > 0) {
+      console.warn('[MapView] 分段非空但 GeoJSON 为空，检查坐标是否有效');
+    } else if (geojson.features.length === 0) {
+      console.warn('[MapView] 路线 GeoJSON 为空，地图上不会显示路线');
+    }
+  };
 
   // --- 初始化地图（仅一次）---
   useEffect(() => {
@@ -319,6 +365,8 @@ export function MapView({
 
       // 起终点 / 途径点用 maplibregl.Marker（DOM 元素）实现，
       // 这样无需引入字体 glyphs 依赖，也就不必请求任何外部字体服务。
+      // 样式（重）加载后立刻回填当前路线，避免换线窗口期丢线
+      applyRouteData(map, segmentsRef.current);
       setLoaded(true);
     };
 
@@ -366,32 +414,23 @@ export function MapView({
     const map = mapRef.current;
     if (!map || !loaded) return;
 
-    const src = map.getSource(ROUTE_SOURCE) as maplibregl.GeoJSONSource | undefined;
-    if (!src) return;
-
-    const geojson = buildRouteGeoJSON(segments, tileCrs);
-    src.setData(geojson as never);
-
-    /**
-     * 运行时自检：把几何要素数打到控制台。
-     *
-     * 存在的理由：MapLibre 的矢量图层在某些渲染环境下（实测无头软件光栅化）
-     * 会静默不绘制 —— 图层存在、数据已 setData，但屏幕上什么都没有，
-     * 且不报任何错。有这一行，排查时能立刻分清「没数据」还是「没画出来」。
-     * 只在数量异常时告警，正常情况不刷屏。
-     */
-    if (geojson.features.length === 0) {
-      console.warn('[MapView] 路线 GeoJSON 为空，地图上不会显示路线');
-    }
+    applyRouteData(map, segments);
 
     if (fitToRoute && segments.length > 0) {
       const bounds = new maplibregl.LngLatBounds();
-      for (const s of segments) {
+      // 长途不逐点 extend（可达数千次），抽样 + 首尾即可
+      const step = Math.max(1, Math.floor(segments.length / 200));
+      for (let i = 0; i < segments.length; i += step) {
+        const s = segments[i]!;
         bounds.extend([s.a.lon, s.a.lat]);
         bounds.extend([s.b.lon, s.b.lat]);
       }
+      const last = segments[segments.length - 1]!;
+      bounds.extend([last.a.lon, last.a.lat]);
+      bounds.extend([last.b.lon, last.b.lat]);
       map.fitBounds(bounds, { padding: 48, duration: 700, maxZoom: 13 });
     }
+    map.triggerRepaint();
   }, [segments, loaded, fitToRoute, tileCrs]);
 
   // --- 高亮更新 ---
