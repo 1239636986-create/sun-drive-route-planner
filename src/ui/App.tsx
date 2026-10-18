@@ -136,7 +136,7 @@ export default function App() {
           <h1 className="sidebar__title">阳光驾驶路线</h1>
           <p className="sidebar__subtitle">出发前看清逆光路段、危险时刻和建议出发时间</p>
           <p className="sidebar__build" aria-label="当前版本标记">
-            版本标记：粗线绿黄红 · 途径点
+            版本标记：粗线绿黄红 · 途径点 · 端口 5299
           </p>
         </header>
 
