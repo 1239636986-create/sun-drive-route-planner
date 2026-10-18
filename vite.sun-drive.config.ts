@@ -46,6 +46,8 @@ export default defineConfig(({ mode }) => {
       host: '0.0.0.0',
       port: 5299,
       strictPort: true,
+      // 允许 Cloudflare / localtunnel 临时公网域名预览
+      allowedHosts: true,
       proxy: createAmapProxy(env.AMAP_PROXY_TARGET, amapKey),
     },
 
