@@ -33,6 +33,7 @@ import { riskLevel, riskAdvice, RISK_LEVEL_COLORS } from '@/domain/glareEngine.j
 import type { LonLat, RiskLevel, SegmentRisk } from '@/domain/types.js';
 
 const ROUTE_SOURCE = 'route';
+const ROUTE_CASING_LAYER = 'route-risk-casing';
 const ROUTE_LAYER = 'route-risk';
 const HIGHLIGHT_SOURCE = 'route-highlight';
 const HIGHLIGHT_LAYER = 'route-highlight-line';
@@ -177,6 +178,26 @@ export function MapView({
         data: { type: 'FeatureCollection', features: [] },
       });
 
+      // 深色衬底：让彩色路线在浅色底图上也能立刻跳出来
+      map.addLayer({
+        id: ROUTE_CASING_LAYER,
+        type: 'line',
+        source: ROUTE_SOURCE,
+        layout: { 'line-cap': 'round', 'line-join': 'round' },
+        paint: {
+          'line-color': '#0B1220',
+          'line-width': [
+            'interpolate',
+            ['linear'],
+            ['zoom'],
+            6, 12,
+            10, 20,
+            14, 30,
+          ],
+          'line-opacity': 0.55,
+        },
+      });
+
       map.addLayer({
         id: ROUTE_LAYER,
         type: 'line',
@@ -184,16 +205,16 @@ export function MapView({
         layout: { 'line-cap': 'round', 'line-join': 'round' },
         paint: {
           'line-color': ['get', 'color'],
-          // 加粗突出：远看也能立刻辨认分级路段
+          // 加粗突出：远看也要压过底图高速线宽
           'line-width': [
             'interpolate',
             ['linear'],
             ['zoom'],
-            6, 5,
-            10, 9,
-            14, 14,
+            6, 8,
+            10, 14,
+            14, 22,
           ],
-          'line-opacity': 0.95,
+          'line-opacity': 1,
         },
       });
 
@@ -213,9 +234,9 @@ export function MapView({
             'interpolate',
             ['linear'],
             ['zoom'],
-            6, 9,
-            10, 15,
-            14, 22,
+            6, 14,
+            10, 22,
+            14, 32,
           ],
           'line-opacity': 0.85,
         },
