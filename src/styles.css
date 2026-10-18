@@ -134,6 +134,13 @@ button {
   line-height: 1.5;
 }
 
+.sidebar__build {
+  margin: 8px 0 0;
+  font-size: 11px;
+  color: #1faf5a;
+  font-weight: 650;
+}
+
 .sidebar__body {
   flex: 1;
   overflow-y: auto;

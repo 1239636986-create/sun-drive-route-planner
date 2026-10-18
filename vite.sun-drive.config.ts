@@ -39,14 +39,15 @@ export default defineConfig(({ mode }) => {
     },
 
     server: {
-      host: '127.0.0.1',
+      // 0.0.0.0：Cloud Agent / 端口转发才能从你本机浏览器打开
+      host: '0.0.0.0',
       port: 5188,
       strictPort: true,
       proxy: createAmapProxy(env.AMAP_PROXY_TARGET, amapKey),
     },
 
     preview: {
-      host: '127.0.0.1',
+      host: '0.0.0.0',
       port: 5189,
       strictPort: true,
       proxy: createAmapProxy(env.AMAP_PROXY_TARGET, amapKey),
