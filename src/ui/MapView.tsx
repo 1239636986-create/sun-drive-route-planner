@@ -33,19 +33,48 @@ import { riskLevel, riskAdvice, RISK_LEVEL_COLORS } from '@/domain/glareEngine.j
 import type { LonLat, RiskLevel, SegmentRisk } from '@/domain/types.js';
 
 const ROUTE_SOURCE = 'route';
+const ROUTE_OUTER_CASING_LAYER = 'route-risk-outer-casing';
+const ROUTE_CASING_LAYER = 'route-risk-casing';
 const ROUTE_LAYER = 'route-risk';
+const ROUTE_ARROW_LAYER = 'route-risk-arrows';
 const HIGHLIGHT_SOURCE = 'route-highlight';
 const HIGHLIGHT_LAYER = 'route-highlight-line';
+const ROUTE_ARROW_IMAGE = 'route-chevron';
 
 interface MapViewProps {
   segments: readonly SegmentRisk[];
   /** 高亮某条高风险窗口的所属分段 */
   highlightIndices?: ReadonlySet<number>;
-  endpoints?: { from: LonLat; to: LonLat } | null;
+  endpoints?: {
+    from: LonLat;
+    to: LonLat;
+    /** 途径点，按途经顺序 */
+    waypoints?: readonly LonLat[];
+  } | null;
   /** 初始视野自动贴合路线 */
   fitToRoute?: boolean;
   /** 当前瓦片源 id。决定是否需要对路线做坐标转换 */
   tileSourceId?: string;
+}
+
+/** 仿导航 App 的白色方向箭头（画到 canvas 再注入 MapLibre） */
+function createChevronImage(): ImageData {
+  const size = 64;
+  const canvas = document.createElement('canvas');
+  canvas.width = size;
+  canvas.height = size;
+  const ctx = canvas.getContext('2d')!;
+  ctx.clearRect(0, 0, size, size);
+  ctx.fillStyle = 'rgba(255,255,255,0.92)';
+  ctx.beginPath();
+  // 尖端朝右 —— 与 line 前进方向对齐（MapLibre symbol 会按线走向旋转）
+  ctx.moveTo(10, 14);
+  ctx.lineTo(46, 32);
+  ctx.lineTo(10, 50);
+  ctx.lineTo(18, 32);
+  ctx.closePath();
+  ctx.fill();
+  return ctx.getImageData(0, 0, size, size);
 }
 
 /**
@@ -177,6 +206,45 @@ export function MapView({
         data: { type: 'FeatureCollection', features: [] },
       });
 
+      // 仿高德导航：白边 + 深色内衬 + 粗彩色芯线，远看也压过底图道路
+      map.addLayer({
+        id: ROUTE_OUTER_CASING_LAYER,
+        type: 'line',
+        source: ROUTE_SOURCE,
+        layout: { 'line-cap': 'round', 'line-join': 'round' },
+        paint: {
+          'line-color': '#ffffff',
+          'line-width': [
+            'interpolate',
+            ['linear'],
+            ['zoom'],
+            6, 16,
+            10, 26,
+            14, 36,
+          ],
+          'line-opacity': 0.95,
+        },
+      });
+
+      map.addLayer({
+        id: ROUTE_CASING_LAYER,
+        type: 'line',
+        source: ROUTE_SOURCE,
+        layout: { 'line-cap': 'round', 'line-join': 'round' },
+        paint: {
+          'line-color': '#1a2330',
+          'line-width': [
+            'interpolate',
+            ['linear'],
+            ['zoom'],
+            6, 13,
+            10, 21,
+            14, 30,
+          ],
+          'line-opacity': 0.35,
+        },
+      });
+
       map.addLayer({
         id: ROUTE_LAYER,
         type: 'line',
@@ -184,16 +252,44 @@ export function MapView({
         layout: { 'line-cap': 'round', 'line-join': 'round' },
         paint: {
           'line-color': ['get', 'color'],
-          // 窄屏与高缩放下都保持可见
           'line-width': [
             'interpolate',
             ['linear'],
             ['zoom'],
-            6, 2.2,
-            10, 4,
-            14, 7,
+            6, 10,
+            10, 16,
+            14, 24,
           ],
-          'line-opacity': 0.95,
+          'line-opacity': 1,
+        },
+      });
+
+      if (!map.hasImage(ROUTE_ARROW_IMAGE)) {
+        map.addImage(ROUTE_ARROW_IMAGE, createChevronImage(), { pixelRatio: 2 });
+      }
+      map.addLayer({
+        id: ROUTE_ARROW_LAYER,
+        type: 'symbol',
+        source: ROUTE_SOURCE,
+        layout: {
+          'symbol-placement': 'line',
+          'symbol-spacing': 56,
+          'icon-image': ROUTE_ARROW_IMAGE,
+          'icon-size': [
+            'interpolate',
+            ['linear'],
+            ['zoom'],
+            6, 0.35,
+            10, 0.5,
+            14, 0.65,
+          ],
+          'icon-allow-overlap': true,
+          'icon-ignore-placement': true,
+          'icon-rotation-alignment': 'map',
+          'icon-pitch-alignment': 'map',
+        },
+        paint: {
+          'icon-opacity': 0.75,
         },
       });
 
@@ -213,15 +309,15 @@ export function MapView({
             'interpolate',
             ['linear'],
             ['zoom'],
-            6, 5,
-            10, 9,
-            14, 14,
+            6, 18,
+            10, 28,
+            14, 40,
           ],
           'line-opacity': 0.85,
         },
       });
 
-      // 起终点用 maplibregl.Marker（DOM 元素）实现，
+      // 起终点 / 途径点用 maplibregl.Marker（DOM 元素）实现，
       // 这样无需引入字体 glyphs 依赖，也就不必请求任何外部字体服务。
       setLoaded(true);
     };
@@ -332,29 +428,48 @@ export function MapView({
     src.setData({ type: 'FeatureCollection', features });
   }, [highlightIndices, segments, loaded, tileCrs]);
 
-  // --- 起终点标记 ---
+  // --- 起终点 / 途径点标记 ---
   useEffect(() => {
     const map = mapRef.current;
     if (!map || !loaded || !endpoints) return;
 
-    const mkMarker = (color: string) => {
+    const mkDot = (color: string) => {
       const el = document.createElement('div');
-      el.style.cssText = `width:14px;height:14px;border-radius:50%;background:${color};border:2.5px solid #12161c;box-shadow:0 2px 8px rgba(0,0,0,.55)`;
+      el.style.cssText = `width:14px;height:14px;border-radius:50%;background:${color};border:2.5px solid #fff;box-shadow:0 2px 8px rgba(0,0,0,.45)`;
       return el;
     };
 
+    const mkVia = (n: number) => {
+      const el = document.createElement('div');
+      el.style.cssText =
+        'width:22px;height:22px;border-radius:50%;background:#6B7280;border:2px solid #fff;' +
+        'box-shadow:0 2px 8px rgba(0,0,0,.45);color:#fff;font:700 11px/22px system-ui,sans-serif;' +
+        'text-align:center;user-select:none';
+      el.textContent = String(n);
+      el.title = `途径点 ${n}`;
+      return el;
+    };
+
+    const markers: maplibregl.Marker[] = [];
     const f = adaptCoord(endpoints.from, tileCrs);
+    markers.push(
+      new maplibregl.Marker({ element: mkDot('#4A9EFF') }).setLngLat([f.lon, f.lat]).addTo(map),
+    );
+
+    (endpoints.waypoints ?? []).forEach((wp, i) => {
+      const p = adaptCoord(wp, tileCrs);
+      markers.push(
+        new maplibregl.Marker({ element: mkVia(i + 1) }).setLngLat([p.lon, p.lat]).addTo(map),
+      );
+    });
+
     const t = adaptCoord(endpoints.to, tileCrs);
-    const fromMarker = new maplibregl.Marker({ element: mkMarker('#4A9EFF') })
-      .setLngLat([f.lon, f.lat])
-      .addTo(map);
-    const toMarker = new maplibregl.Marker({ element: mkMarker('#FF8F3F') })
-      .setLngLat([t.lon, t.lat])
-      .addTo(map);
+    markers.push(
+      new maplibregl.Marker({ element: mkDot('#FF8F3F') }).setLngLat([t.lon, t.lat]).addTo(map),
+    );
 
     return () => {
-      fromMarker.remove();
-      toMarker.remove();
+      for (const m of markers) m.remove();
     };
   }, [endpoints, loaded, tileCrs]);
 

@@ -169,12 +169,12 @@ export const RISK_LEVEL_ORDER: Record<RiskLevel, number> = {
   极高: 3,
 };
 
-/** 等级配色（PRD F4）。深红/红/橙/蓝，且配合图例文字，不单靠颜色传达 */
+/** 等级配色（PRD F4）。绿/黄/红，且配合图例文字，不单靠颜色传达 */
 export const RISK_LEVEL_COLORS: Record<RiskLevel, string> = {
-  低: '#4A90D9',
-  中: '#F5A623',
-  高: '#E02020',
-  极高: '#8B0000',
+  低: '#1FAF5A',
+  中: '#F0CA12',
+  高: '#F05A28',
+  极高: '#E01818',
 };
 
 /**

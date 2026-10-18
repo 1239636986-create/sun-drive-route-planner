@@ -49,8 +49,12 @@ export interface AnalysisError {
 export interface UseRouteAnalysis {
   proxy: ProxyStatus;
 
-  /** 当前分析用的起终点（用于「保存为常用路线」） */
-  currentRoute: { origin: LonLat; destination: LonLat } | null;
+  /** 当前分析用的起终点与途径点（用于「保存为常用路线」） */
+  currentRoute: {
+    origin: LonLat;
+    destination: LonLat;
+    waypoints: LonLat[];
+  } | null;
 
   status: AnalysisStatus;
   error: AnalysisError | null;
@@ -78,8 +82,12 @@ export interface UseRouteAnalysis {
   plan: DeparturePlan | null;
   planError: string | null;
 
-  /** 触发路线分析 */
-  analyze: (origin: LonLat, destination: LonLat) => Promise<void>;
+  /** 触发路线分析（可选途径点，按顺序经过） */
+  analyze: (
+    origin: LonLat,
+    destination: LonLat,
+    waypoints?: readonly LonLat[],
+  ) => Promise<void>;
 
   /** 天气衰减系数。天气未知时恒为 1.0 */
   weatherFactor: number;
@@ -160,9 +168,11 @@ export function useRouteAnalysis(): UseRouteAnalysis {
   const [status, setStatus] = useState<AnalysisStatus>('idle');
   const [error, setError] = useState<AnalysisError | null>(null);
   const [route, setRoute] = useState<Route | null>(null);
-  const [currentRoute, setCurrentRoute] = useState<{ origin: LonLat; destination: LonLat } | null>(
-    null,
-  );
+  const [currentRoute, setCurrentRoute] = useState<{
+    origin: LonLat;
+    destination: LonLat;
+    waypoints: LonLat[];
+  } | null>(null);
   const [weatherFactor, setWeatherFactor] = useState(1);
   /** 防止快速重新规划时旧请求覆盖新请求 */
   const analyzeSeq = useRef(0);
@@ -184,45 +194,51 @@ export function useRouteAnalysis(): UseRouteAnalysis {
     };
   }, []);
 
-  const analyze = useCallback(async (origin: LonLat, destination: LonLat) => {
-    const seq = ++analyzeSeq.current;
-    setStatus('loading');
-    setError(null);
-    setPlan(null);
-    setPlanError(null);
+  const analyze = useCallback(
+    async (origin: LonLat, destination: LonLat, waypoints: readonly LonLat[] = []) => {
+      const seq = ++analyzeSeq.current;
+      setStatus('loading');
+      setError(null);
+      setPlan(null);
+      setPlanError(null);
 
-    try {
-      // 代理架构下前端不持有密钥 —— 不传 apiKey，凭据由代理注入
-      const provider = new AmapProvider({ baseUrl: '/amap-api' });
-      const r = await provider.getRoute(origin, destination);
-      // 旧请求完成后直接丢弃，不允许覆盖用户最新选择
-      if (seq !== analyzeSeq.current) return;
-
-      if (r.segments.length === 0) {
-        setRoute(null);
-        setStatus('error');
-        setError({
-          title: '路线不含有效折线',
-          detail: '高德返回的路线没有可用于计算的坐标点，请换一组起终点重试。',
+      try {
+        // 代理架构下前端不持有密钥 —— 不传 apiKey，凭据由代理注入
+        const provider = new AmapProvider({ baseUrl: '/amap-api' });
+        const via = waypoints.slice();
+        const r = await provider.getRoute(origin, destination, {
+          waypoints: via.length > 0 ? via : undefined,
         });
-        return;
+        // 旧请求完成后直接丢弃，不允许覆盖用户最新选择
+        if (seq !== analyzeSeq.current) return;
+
+        if (r.segments.length === 0) {
+          setRoute(null);
+          setStatus('error');
+          setError({
+            title: '路线不含有效折线',
+            detail: '高德返回的路线没有可用于计算的坐标点，请换一组起终点重试。',
+          });
+          return;
+        }
+
+        setRoute(r);
+        setCurrentRoute({ origin, destination, waypoints: via });
+        setStatus('ready');
+
+        // 保留用户当前预览时刻：重新规划路线不应悄悄改掉用户选好的时间。
+      } catch (err) {
+        if (seq !== analyzeSeq.current) return;
+        setRoute(null);
+        setCurrentRoute(null);
+        setStatus('error');
+        setError(toAnalysisError(err));
       }
-
-      setRoute(r);
-      setCurrentRoute({ origin, destination });
-      setStatus('ready');
-
-      // 保留用户当前预览时刻：重新规划路线不应悄悄改掉用户选好的时间。
-    } catch (err) {
-      if (seq !== analyzeSeq.current) return;
-      setRoute(null);
-      setCurrentRoute(null);
-      setStatus('error');
-      setError(toAnalysisError(err));
-    }
-    // previewAt 刻意不入依赖：它只用于校正日期，不应触发重新取路线
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+      // previewAt 刻意不入依赖：它只用于校正日期，不应触发重新取路线
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+    },
+    [],
+  );
 
   // --- 派生结果：当前预览时刻下的风险 ---
   const segments = useMemo<SegmentRisk[]>(

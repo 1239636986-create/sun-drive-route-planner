@@ -311,6 +311,27 @@ describe('AmapProvider —— 错误处理', () => {
     expect(captured).toContain('origin=116.397428%2C39.909230');
     expect(captured).toContain('destination=117.201509%2C39.085308');
     expect(captured).toContain('strategy=0');
+    expect(captured).not.toContain('waypoints=');
+  });
+
+  it('传入途径点时 URL 携带 waypoints 参数', async () => {
+    let captured = '';
+    const fetchImpl = (async (input: RequestInfo | URL) => {
+      captured = String(input);
+      return new Response(JSON.stringify(fixture), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      });
+    }) as unknown as typeof fetch;
+
+    const p = new AmapProvider({ apiKey: 'k', fetchImpl });
+    await p.getRoute(
+      { lon: 116.397428, lat: 39.90923 },
+      { lon: 117.201509, lat: 39.085308 },
+      { waypoints: [{ lon: 116.994_195, lat: 39.385_558 }] },
+    );
+
+    expect(captured).toContain('waypoints=116.994195%2C39.385558');
   });
 
   it('成功路径返回可用的 Route', async () => {

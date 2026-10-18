@@ -239,11 +239,35 @@ button {
 .route-summary__dot--to {
   background: #ff8f3f;
 }
+.route-summary__dot--via {
+  background: #8b93a7;
+}
+
+.route-summary__via-label {
+  flex-shrink: 0;
+  font-size: 11px;
+  color: var(--text-faint);
+  margin-right: 2px;
+}
 
 .route-summary__arrow {
   color: var(--text-faint);
   font-size: 11px;
   padding-left: 1px;
+}
+
+.waypoint-row {
+  position: relative;
+  padding-right: 64px;
+}
+
+.waypoint-row__remove {
+  position: absolute;
+  right: 0;
+  top: 28px;
+  width: auto !important;
+  padding: 6px 10px !important;
+  font-size: 12px;
 }
 
 .route-summary__stats {
