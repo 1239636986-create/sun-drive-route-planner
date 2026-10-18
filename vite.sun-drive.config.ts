@@ -11,7 +11,10 @@ import { fileURLToPath, URL } from 'node:url';
  *   2. 生产构建进入独立目录 dist-sun-drive/；
  *   3. 保留同样的高德安全代理能力，前端构建产物不包含 Key。
  *
- * 开发地址：http://127.0.0.1:5188
+ * 开发地址：http://localhost:5299
+ *
+ * 端口刻意不用 5173/5188：Cursor Cloud 端口转发容易卡在旧 Agent 的
+ * 同名端口上，导致本机 localhost 仍打开旧 UI。换新端口可避开脏转发。
  */
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), '');
@@ -41,14 +44,14 @@ export default defineConfig(({ mode }) => {
     server: {
       // 0.0.0.0：Cloud Agent / 端口转发才能从你本机浏览器打开
       host: '0.0.0.0',
-      port: 5188,
+      port: 5299,
       strictPort: true,
       proxy: createAmapProxy(env.AMAP_PROXY_TARGET, amapKey),
     },
 
     preview: {
       host: '0.0.0.0',
-      port: 5189,
+      port: 5300,
       strictPort: true,
       proxy: createAmapProxy(env.AMAP_PROXY_TARGET, amapKey),
     },
