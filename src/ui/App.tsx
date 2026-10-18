@@ -46,7 +46,15 @@ export default function App() {
   // 起终点：默认用示例路线，让用户一进来就能看到结论
   const [origin, setOrigin] = useState<PlaceResult | null>(SAMPLE_ORIGIN);
   const [destination, setDestination] = useState<PlaceResult | null>(SAMPLE_DEST);
+  /** 途径点槽位（按途经顺序；null 表示已添加但未选地点）。UI 上限 8 */
+  const [waypoints, setWaypoints] = useState<Array<PlaceResult | null>>([]);
   const [showForm, setShowForm] = useState(false);
+
+  const MAX_WAYPOINTS = 8;
+  const filledWaypoints = useMemo(
+    () => waypoints.filter((w): w is PlaceResult => w !== null),
+    [waypoints],
+  );
 
   // 天气：按行程中点 + 出发日期取
   const weatherMid = useMemo(
@@ -77,11 +85,12 @@ export default function App() {
     setSelectedWindow(null);
   }, [a.previewAt]);
 
-  /** 起终点都选好后就分析 */
+  /** 起终点都选好后就分析（未选地点的途径点槽位会跳过） */
   const runAnalysis = useCallback(
-    (o: PlaceResult | null, d: PlaceResult | null) => {
+    (o: PlaceResult | null, d: PlaceResult | null, vias: Array<PlaceResult | null> = []) => {
       if (!o || !d) return;
-      void a.analyze(o, d);
+      const filled = vias.filter((w): w is PlaceResult => w !== null);
+      void a.analyze(o, d, filled);
     },
     [a],
   );
@@ -96,8 +105,9 @@ export default function App() {
       };
       setOrigin(o);
       setDestination(d);
+      setWaypoints([]);
       setShowForm(false);
-      runAnalysis(o, d);
+      runAnalysis(o, d, []);
     },
     [runAnalysis],
   );
@@ -109,6 +119,11 @@ export default function App() {
       destination: { lon: destination.lon, lat: destination.lat, label: destination.formatted },
     });
   }, [fav, origin, destination]);
+
+  const addWaypointSlot = useCallback(() => {
+    setShowForm(true);
+    setWaypoints((prev) => (prev.length >= MAX_WAYPOINTS ? prev : [...prev, null]));
+  }, []);
 
   const canAnalyze = origin !== null && destination !== null;
   const loading = a.status === 'loading';
@@ -140,6 +155,16 @@ export default function App() {
                 <span className="route-summary__dot route-summary__dot--from" />
                 {origin?.formatted ?? '未设置起点'}
               </div>
+              {filledWaypoints.map((wp, i) => (
+                <div key={`via-sum-${i}`}>
+                  <div className="route-summary__arrow">↓</div>
+                  <div className="route-summary__point">
+                    <span className="route-summary__dot route-summary__dot--via" />
+                    <span className="route-summary__via-label">途{i + 1}</span>
+                    {wp.formatted}
+                  </div>
+                </div>
+              ))}
               <div className="route-summary__arrow">↓</div>
               <div className="route-summary__point">
                 <span className="route-summary__dot route-summary__dot--to" />
@@ -170,12 +195,14 @@ export default function App() {
                 if (!origin || !destination) return;
                 const nextOrigin = destination;
                 const nextDestination = origin;
+                const nextVias = [...waypoints].reverse();
                 setOrigin(nextOrigin);
                 setDestination(nextDestination);
-                runAnalysis(nextOrigin, nextDestination);
+                setWaypoints(nextVias);
+                runAnalysis(nextOrigin, nextDestination, nextVias);
               }}
               disabled={!canAnalyze || loading}
-              title="交换起点和终点，规划返程"
+              title="交换起点和终点，规划返程（途径点顺序同步反转）"
             >
               ⇄ 返程
             </button>
@@ -185,7 +212,20 @@ export default function App() {
               onClick={() => setShowForm((v) => !v)}
               aria-expanded={showForm}
             >
-              {showForm ? '收起' : '修改起终点'}
+              {showForm ? '收起' : '修改路线'}
+            </button>
+            <button
+              type="button"
+              className="btn btn--ghost"
+              onClick={addWaypointSlot}
+              disabled={waypoints.length >= MAX_WAYPOINTS || loading}
+              title={
+                waypoints.length >= MAX_WAYPOINTS
+                  ? `最多 ${MAX_WAYPOINTS} 个途径点`
+                  : '在起终点之间增加途径点'
+              }
+            >
+              ＋ 途径点
             </button>
             <button
               type="button"
@@ -207,6 +247,39 @@ export default function App() {
                 onSelect={(p) => setOrigin(p)}
                 onClear={() => setOrigin(null)}
               />
+              {waypoints.map((wp, i) => (
+                <div key={`via-edit-${i}`} className="waypoint-row">
+                  <PlaceSearch
+                    id={`waypoint-${i}`}
+                    label={`途径点 ${i + 1}`}
+                    value={wp}
+                    onSelect={(p) =>
+                      setWaypoints((prev) => prev.map((x, j) => (j === i ? p : x)))
+                    }
+                    onClear={() =>
+                      setWaypoints((prev) => prev.map((x, j) => (j === i ? null : x)))
+                    }
+                  />
+                  <button
+                    type="button"
+                    className="btn btn--ghost waypoint-row__remove"
+                    onClick={() => setWaypoints((prev) => prev.filter((_, j) => j !== i))}
+                    aria-label={`删除途径点 ${i + 1}`}
+                  >
+                    删除
+                  </button>
+                </div>
+              ))}
+              {waypoints.length < MAX_WAYPOINTS && (
+                <button
+                  type="button"
+                  className="btn btn--ghost"
+                  style={{ width: 'auto', marginBottom: 12 }}
+                  onClick={addWaypointSlot}
+                >
+                  ＋ 添加途径点
+                </button>
+              )}
               <PlaceSearch
                 id="destination"
                 label="终点"
@@ -218,7 +291,7 @@ export default function App() {
                 type="button"
                 className="btn"
                 onClick={() => {
-                  runAnalysis(origin, destination);
+                  runAnalysis(origin, destination, waypoints);
                   setShowForm(false);
                 }}
                 disabled={!canAnalyze || loading}
@@ -388,7 +461,11 @@ export default function App() {
       <MapView
         segments={a.segments}
         highlightIndices={highlightIndices}
-        endpoints={origin && destination ? { from: origin, to: destination } : null}
+        endpoints={
+          origin && destination
+            ? { from: origin, to: destination, waypoints: filledWaypoints }
+            : null
+        }
         tileSourceId={tileSource}
       />
     </div>

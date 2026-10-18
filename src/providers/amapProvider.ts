@@ -23,7 +23,16 @@
  */
 
 import { buildSegments, type RawPolylinePart } from '../domain/geo.js';
-import type { LonLat, Route, RouteProvider, RouteSegment } from '../domain/types.js';
+import type {
+  GetRouteOptions,
+  LonLat,
+  Route,
+  RouteProvider,
+  RouteSegment,
+} from '../domain/types.js';
+
+/** 高德驾车途径点上限 */
+export const AMAP_MAX_WAYPOINTS = 16;
 
 const BASE_URL = 'https://restapi.amap.com';
 
@@ -199,13 +208,22 @@ export class AmapProvider implements RouteProvider {
    * 获取驾车路线。
    *
    * 必须带 extensions=all，否则拿不到完整的 steps 与 tmcs。
+   * 途径点经 `waypoints` 传入（`lon,lat;lon,lat`），最多 16 个。
    */
-  async getRoute(origin: LonLat, destination: LonLat): Promise<Route> {
+  async getRoute(
+    origin: LonLat,
+    destination: LonLat,
+    options?: GetRouteOptions,
+  ): Promise<Route> {
     const url = this.resolveUrl('/v3/direction/driving');
     if (this.needsOwnKey()) url.searchParams.set('key', this.apiKey);
     // 高德要求 `lon,lat` 顺序，且小数点不超过 6 位
     url.searchParams.set('origin', formatLonLat(origin));
     url.searchParams.set('destination', formatLonLat(destination));
+    const waypoints = (options?.waypoints ?? []).slice(0, AMAP_MAX_WAYPOINTS);
+    if (waypoints.length > 0) {
+      url.searchParams.set('waypoints', waypoints.map(formatLonLat).join(';'));
+    }
     url.searchParams.set('extensions', 'all');
     url.searchParams.set('strategy', String(this.strategy));
     url.searchParams.set('output', 'JSON');

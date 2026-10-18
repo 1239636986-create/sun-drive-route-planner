@@ -163,8 +163,18 @@ export interface Route {
 
 export type RouteSource = 'amap-web' | 'amap-js' | 'osrm' | 'valhalla' | 'fixture';
 
+/** 路线获取可选参数 */
+export interface GetRouteOptions {
+  /** 途径点（按顺序经过）。高德最多 16 个 */
+  waypoints?: readonly LonLat[];
+}
+
 /** 路线获取的统一接口 —— 算法层完全不知道数据来自哪（PRD 7.2） */
 export interface RouteProvider {
   readonly name: RouteSource;
-  getRoute(origin: LonLat, destination: LonLat): Promise<Route>;
+  getRoute(
+    origin: LonLat,
+    destination: LonLat,
+    options?: GetRouteOptions,
+  ): Promise<Route>;
 }
